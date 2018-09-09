@@ -283,13 +283,6 @@ func printResults(
     link := make(map[string][]string, 0)
     for url1, urls := range outboundLinkMap {
         for _, url2 := range urls {
-            //parsedUrl2, err := url.Parse(url2)
-            //if err != nil {
-            //     fmt.Println("Error parsing url %s: %s\n", url2, err)
-            //     continue
-            //}
-            //url2Host := parsedUrl2.Host
-
             result, _ := belongsToDomain(url2, domain)
             if result {
                 continue
