@@ -63,7 +63,7 @@ func handleFlags() {
 func initWhitelistedDomains() map[string]bool {
     dat, err := ioutil.ReadFile(*domainWhitelistFile)
     if err != nil {
-        panic(fmt.Sprintf("Error reading the domain whitelist file: %s\n", domainWhitelistFile))
+        panic(fmt.Sprintf("Error reading the domain whitelist file: %s\n", *domainWhitelistFile))
     }
     whitelisted := make([]string, 0)
     whitelistCount := 0
