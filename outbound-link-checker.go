@@ -129,7 +129,7 @@ func crawl(
 	if crawlPageLimit >= 0 {
 		fmt.Printf("Crawling %d (limit: %d) URL: \"%s\"\n", countValue, crawlPageLimit, url)
 	} else {
-		fmt.Printf("Crawling %d URL: \"%s\"\n", countValue, crawlPageLimit, url)
+		fmt.Printf("Crawling %d URL: \"%s\"\n", countValue, url)
 	}
 
 	// Fetch the body
