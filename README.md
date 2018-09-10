@@ -6,9 +6,17 @@ This simple tool allows you to list all outbound links from your domain to catch
 
 My personal website was compromised, most likely due to password-reuse and the attacker carefully inserted a few spammy links for SEO to certain websites. I caught them on one-off basis and then realized that the best way to deal with these is to be able to list all the outbound links from my website and whitelist the domains one-by-one. Unfortunately, I did not find a single tool which can do this for me, so, I decided to make one. This tool preserves the domain whitelist file, so that, if I re-run the code a few months from now, then I have to only check the newly added links. I caught many more spammy links using this approach. Thinking that other website/blog owners are facing the same issue, I decided to put this tool out in public.
 
+## Installation (optional)
+
+`go get github.com/ashishb/outbound-link-checker`
+
 ## Sample Usage
 
-`go run outbound-link-checker.go --domain google.com --starting-url https://google.com -num-url-crawl-limit 10`
+`go run outbound-link-checker.go -domain google.com -starting-url https://google.com -num-url-crawl-limit 10`
+
+or, if you installed and the binary is in your $GOPATH then
+
+`outbound-link-checker -domain google.com -starting-url https://google.com -num-url-crawl-limit 10`
 
 ## Parameters
 
