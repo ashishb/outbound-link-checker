@@ -1,6 +1,6 @@
 ## Sample Usage
 
-`go run list_all_outbound_links.go 
+`go run outbound-link-checker.go 
 	--domain ashishb.net
-	--starting-url https://ashishb.net
-	--num-crawl-url-limit -1`
+	--starting-url https://ashishb.net`
+	
