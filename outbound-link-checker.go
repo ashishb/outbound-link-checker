@@ -17,9 +17,9 @@ import (
 const defaultCrawlPageLimit = -1 // Unlimited
 const defaultMaxConcurrentCrawls = 20
 const defaultMaxBodyFetchRetryCount = 3
-const defaultDomainWhitelistFile = "./whitelisted_domains.txt"
+const defaultDomainWhitelistFile = "./%s_whitelisted_outbound_domains.txt"
 
-var crawlPageLimit = flag.Int("num-crawl-url-limit", defaultCrawlPageLimit,
+var crawlPageLimit = flag.Int("num-url-crawl-limit", defaultCrawlPageLimit,
 	"Number of urls to crawl (default: unlimited)")
 var maxConcurrentCrawls = flag.Int("num-concurrent-crawls", defaultMaxConcurrentCrawls,
 	fmt.Sprintf("Number of concurrent requests to the website (Default: %d)", defaultMaxConcurrentCrawls))
@@ -28,7 +28,7 @@ var maxBodyFetchRetryCount = flag.Int("num-retry", defaultMaxBodyFetchRetryCount
 var interactive = flag.Bool("interactive", true, "Allows you to interactively add new domains to the list as they"+
 	" are encountered")
 var domainWhitelistFile = flag.String("domains-whitelist-file",
-	defaultDomainWhitelistFile,
+	"",
 	"A file containing a new-line separated white-listed domains,"+
 		" links to these domains will be ignored, any empty lines or lines starting with \"//\" in"+
 		" this file will be ignored as well")
@@ -58,12 +58,15 @@ func handleFlags() {
 	if len(*startingUrl) == 0 {
 		panic("Missing starting url")
 	}
+	if len(*domainWhitelistFile) == 0 {
+		*domainWhitelistFile = fmt.Sprintf(defaultDomainWhitelistFile, *domain)
+	}
 }
 
 func initWhitelistedDomains() map[string]bool {
 	dat, err := ioutil.ReadFile(*domainWhitelistFile)
 	if err != nil {
-		panic(fmt.Sprintf("Error reading the domain whitelist file: %s\n", *domainWhitelistFile))
+		fmt.Printf("Domain whitelist file does not exist, it will be created later: %s\n", *domainWhitelistFile)
 	}
 	whitelisted := make([]string, 0)
 	whitelistCount := 0
@@ -123,7 +126,11 @@ func crawl(
 		lock.Unlock()
 	}
 
-	fmt.Printf("Crawling %d (limit: %d) URL: \"%s\"\n", countValue, crawlPageLimit, url)
+	if crawlPageLimit >= 0 {
+		fmt.Printf("Crawling %d (limit: %d) URL: \"%s\"\n", countValue, crawlPageLimit, url)
+	} else {
+		fmt.Printf("Crawling %d URL: \"%s\"\n", countValue, crawlPageLimit, url)
+	}
 
 	// Fetch the body
 	body, err := getBody(url)
@@ -344,7 +351,11 @@ func handleInteractively(url2 string, whitelistedDomains map[string]bool) {
 	text, _ := reader.ReadString('\n')
 	if strings.Compare(text, "y\n") == 0 {
 		addDomainToWhiteList(whitelistedDomains, domain)
-		file, _ := os.OpenFile(*domainWhitelistFile, os.O_APPEND|os.O_WRONLY, 0600)
+		file, err := os.OpenFile(*domainWhitelistFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+		if err != nil {
+			panic(
+				fmt.Sprintf("Error opening file %s: %s\n", *domainWhitelistFile, err))
+		}
 		defer file.Close()
 		w := bufio.NewWriter(file)
 		fmt.Fprintln(w, domain)
