@@ -110,7 +110,7 @@ func crawl(
 	visitedMap map[string]bool,
 	crawlPageLimit int) {
 
-	if hasVisited(url, visitedMap) {
+	if !recordNewVisit(url, visitedMap) {
 		// fmt.Printf("Skipping already visited url: %s\n", url)
 		return
 	}
@@ -138,8 +138,6 @@ func crawl(
 		fmt.Printf("Error %s while crawling url %s\n", err, url)
 		return
 	}
-
-	recordVisit(url, visitedMap)
 
 	// Extract the urls
 	urls := getUrls(body)
@@ -204,8 +202,6 @@ func recordLink(url string, url2 string, outboundLinkMap map[string][]string) {
 }
 
 func hasVisited(url string, visitedMap map[string]bool) bool {
-	lock.Lock()
-	defer lock.Unlock()
 	url = normalizeUrl(url)
 	return visitedMap[url]
 }
@@ -223,10 +219,16 @@ func normalizeUrl(url string) string {
 	return url
 }
 
-func recordVisit(url string, visitedMap map[string]bool) {
+func recordNewVisit(url string, visitedMap map[string]bool) bool {
 	lock.Lock()
 	defer lock.Unlock()
-	visitedMap[url] = true
+	url = normalizeUrl(url)
+	if visitedMap[url] {
+		return false
+	} else {
+		visitedMap[url] = true
+		return true
+	}
 }
 
 func belongsToDomain(url2 string, domain string) (bool, error) {
