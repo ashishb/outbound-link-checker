@@ -306,10 +306,10 @@ func printResults(
 
 	fmt.Printf("Results:\n")
 	count := 0
-	for url, source_urls := range link {
-		if len(source_urls) >= 1 {
+	for url, sourceUrls := range link {
+		if len(sourceUrls) >= 1 {
 			count += 1
-			fmt.Printf("URL %d: %s\ninbound pages: %s\n\n", count, url, source_urls[0])
+			fmt.Printf("URL %d: %s\ninbound pages: %s\n\n", count, url, sourceUrls[0])
 			if *interactive {
 				handleInteractively(url, whitelistedDomains)
 			}
