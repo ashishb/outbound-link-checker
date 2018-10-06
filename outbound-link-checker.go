@@ -147,7 +147,7 @@ func crawl(
 		recordLink(url, url2, outboundLinkMap)
 		inDomainUrl, err := belongsToDomain(url2, domain)
 		if err != nil {
-			fmt.Printf("Error %s while parsing %s\n", err, url2)
+			fmt.Printf("Error while parsing \"%s\" which came from the source \"%s\": \"%s\"\n", url2, url, err)
 			continue
 		}
 		if inDomainUrl {
@@ -201,21 +201,12 @@ func recordLink(url string, url2 string, outboundLinkMap map[string][]string) {
 	outboundLinkMap[url] = append(outboundLinkMap[url], url2)
 }
 
-func hasVisited(url string, visitedMap map[string]bool) bool {
-	url = normalizeUrl(url)
-	return visitedMap[url]
-}
-
 func normalizeUrl(url string) string {
 	// Remove bookmark fragments.
 	if strings.Contains(url, "#") {
 		url = strings.Split(url, "#")[0]
 	}
 
-	//// Remove trailing forward slash.
-	//if strings.HasSuffix(url, "/") {
-	//     url = url[0:len(url) - 1]
-	//}
 	return url
 }
 
