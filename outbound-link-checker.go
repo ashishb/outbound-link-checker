@@ -80,7 +80,7 @@ func initWhitelistedDomains() map[string]bool {
 		if strings.HasPrefix(line, "//") {
 			continue
 		}
-		whitelistCount += 1
+		whitelistCount++
 		whitelisted = append(whitelisted, line)
 	}
 	fmt.Printf("Read %d domains in the domain whitelist\n", whitelistCount)
@@ -116,15 +116,14 @@ func crawl(
 	}
 
 	lock.Lock()
-	count += 1
+	count++
 	countValue := count
 	// Code breaker for testing
 	if crawlPageLimit > 0 && countValue > crawlPageLimit {
 		lock.Unlock()
 		return
-	} else {
-		lock.Unlock()
 	}
+	lock.Unlock()
 
 	if crawlPageLimit >= 0 {
 		fmt.Printf("Crawling %d (limit: %d) URL: \"%s\"\n", countValue, crawlPageLimit, url)
@@ -181,13 +180,13 @@ func waitForCrawlCountAvailability() {
 }
 func incrementRunningCrawlCount() {
 	crawlCountLock.Lock()
-	runningCrawlCount += 1
+	runningCrawlCount++
 	crawlCountLock.Unlock()
 }
 
 func decrementRunningCrawlCount() {
 	crawlCountLock.Lock()
-	runningCrawlCount -= 1
+	runningCrawlCount--
 	crawlCountLock.Unlock()
 }
 
@@ -245,7 +244,7 @@ func getBody(url string) (string, error) {
 	var err error
 	retryCount := 0
 	for retryCount < *maxBodyFetchRetryCount {
-		retryCount += 1
+		retryCount++
 		time.Sleep(time.Duration((retryCount - 1) * 1000 * 1000 * 1000))
 		response, err1 := http.Get(url)
 		if err1 != nil {
@@ -299,7 +298,7 @@ func printResults(
 	count := 0
 	for url, sourceUrls := range link {
 		if len(sourceUrls) >= 1 {
-			count += 1
+			count++
 			fmt.Printf("URL %d: %s\ninbound pages: %s\n\n", count, url, sourceUrls[0])
 			if *interactive {
 				handleInteractively(url, whitelistedDomains)
