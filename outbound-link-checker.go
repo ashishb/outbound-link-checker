@@ -19,6 +19,9 @@ const defaultMaxConcurrentCrawls = 20
 const defaultMaxBodyFetchRetryCount = 3
 const defaultDomainWhitelistFile = "./%s_whitelisted_outbound_domains.txt"
 
+// These urls cannot be fetched by the crawler since they are either dead or block the crawler.
+const defaultWhitelistedOutboundUrls = "./%s_whitelisted_outbound_urls_known_dead_or_blocked.txt"
+
 var crawlPageLimit = flag.Int("num-url-crawl-limit", defaultCrawlPageLimit,
 	"Number of urls to crawl (default: unlimited)")
 var maxConcurrentCrawls = flag.Int("num-concurrent-crawls", defaultMaxConcurrentCrawls,
@@ -27,11 +30,16 @@ var maxBodyFetchRetryCount = flag.Int("num-retry", defaultMaxBodyFetchRetryCount
 	fmt.Sprintf("Number of retry attempts to fetch a URL (Default: %d)", defaultMaxBodyFetchRetryCount))
 var interactive = flag.Bool("interactive", true, "Allows you to interactively add new domains to the list as they"+
 	" are encountered")
+var showDeadLinks = flag.Bool("show-dead-links", false, "Print outbound links which are dead now")
 var domainWhitelistFile = flag.String("domains-whitelist-file",
 	"",
-	"A file containing a new-line separated white-listed domains,"+
+	"A file containing a newline separated white-listed domains,"+
 		" links to these domains will be ignored, any empty lines or lines starting with \"//\" in"+
 		" this file will be ignored as well")
+var knownDeadOrBlockedExternalUrlsFileName = flag.String("dead-external-urls",
+	"",
+	"A file containing a newline separated external urls which are not crawable say due to crawler blocking. "+
+		"Any empty lines or lines starting with \"//\" in this file will be ignored as well")
 var startingUrl = flag.String("starting-url", "",
 	"The starting url to start the crawl from. Usually, the URL of the homepage"+
 		", for example, https://ashishb.net")
@@ -43,10 +51,11 @@ func main() {
 	handleFlags()
 
 	whitelistedDomains := initWhitelistedDomains()
+	knownDeadOrBlockedExternalUrls := initKnownDeadOrBlockedExternalUrls()
 	// Maps url1 -> url2 if url1 has a link to url2.
 	outboundLinkMap := make(map[string][]string, 0)
 	visitedMap := make(map[string]bool, 0)
-	crawl(*startingUrl, *domain, outboundLinkMap, visitedMap, *crawlPageLimit)
+	crawl(*startingUrl, *domain, outboundLinkMap, visitedMap, *crawlPageLimit, knownDeadOrBlockedExternalUrls)
 	printResults(outboundLinkMap, *domain, whitelistedDomains)
 }
 
@@ -60,6 +69,9 @@ func handleFlags() {
 	}
 	if len(*domainWhitelistFile) == 0 {
 		*domainWhitelistFile = fmt.Sprintf(defaultDomainWhitelistFile, *domain)
+	}
+	if len(*knownDeadOrBlockedExternalUrlsFileName) == 0 {
+		*knownDeadOrBlockedExternalUrlsFileName = fmt.Sprintf(defaultWhitelistedOutboundUrls, *domain)
 	}
 }
 
@@ -92,6 +104,29 @@ func initWhitelistedDomains() map[string]bool {
 	return whitelistedDomains
 }
 
+func initKnownDeadOrBlockedExternalUrls() map[string]bool {
+	dat, err := ioutil.ReadFile(*knownDeadOrBlockedExternalUrlsFileName)
+	if err != nil {
+		panic(fmt.Sprintf("File does not exist: %s, create an empty file.\n", *knownDeadOrBlockedExternalUrlsFileName))
+	}
+	urls := make(map[string]bool, 0)
+	urlCount := 0
+	for _, line := range strings.Split(string(dat), "\n") {
+		line = strings.Trim(line, " ")
+		// Ignore empty lines
+		if len(line) == 0 {
+			continue
+		}
+		// Ignore comments
+		if strings.HasPrefix(line, "//") {
+			continue
+		}
+		urlCount++
+		urls[line] = true
+	}
+	return urls
+}
+
 func addDomainToWhiteList(whitelistedDomains map[string]bool, domain string) {
 	whitelistedDomains[domain] = true
 	whitelistedDomains["www."+domain] = true
@@ -108,7 +143,8 @@ func crawl(
 	domain string,
 	outboundLinkMap map[string][]string,
 	visitedMap map[string]bool,
-	crawlPageLimit int) {
+	crawlPageLimit int,
+	knownDeadOrWhitelistedExternalUrls map[string]bool) {
 
 	if !recordNewVisit(url, visitedMap) {
 		// fmt.Printf("Skipping already visited url: %s\n", url)
@@ -150,7 +186,12 @@ func crawl(
 			continue
 		}
 		if inDomainUrl {
-			go crawl(url2, domain, outboundLinkMap, visitedMap, crawlPageLimit)
+			go crawl(url2, domain, outboundLinkMap, visitedMap, crawlPageLimit, knownDeadOrWhitelistedExternalUrls)
+		} else {
+			if *showDeadLinks && len(url2) > 0 && !knownDeadOrWhitelistedExternalUrls[url2] &&
+				recordNewVisit(url2, visitedMap) {
+				go checkIfAlive(url2, url)
+			}
 		}
 	}
 
@@ -263,6 +304,26 @@ func getBody(url string) (string, error) {
 	return "", err
 }
 
+func checkIfAlive(externalUrl string, sourceUrl string) {
+	waitForCrawlCountAvailability()
+	incrementRunningCrawlCount()
+	defer decrementRunningCrawlCount()
+	response, err := http.Get(externalUrl)
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr,
+			"Error while fetching \"%s\" from \"%s\": %s\n",
+			externalUrl, sourceUrl, err)
+		return
+	}
+
+	if response.StatusCode != 200 {
+		fmt.Fprintf(os.Stderr,
+			"Error while fetching \"%s\" from \"%s\" : %d\n",
+			externalUrl, sourceUrl, response.StatusCode)
+	}
+}
+
 // Hacky way to get links from HTML page
 var linkRegEx = regexp.MustCompile("<a href=['\"](.*?)['\"]")
 
@@ -299,7 +360,7 @@ func printResults(
 	for url, sourceUrls := range link {
 		if len(sourceUrls) >= 1 {
 			count++
-			fmt.Printf("URL %d: %s\ninbound pages: %s\n\n", count, url, sourceUrls[0])
+			fmt.Printf("URL %d: \"%s\"\ninbound pages: %s\n\n", count, url, sourceUrls[0])
 			if *interactive {
 				handleInteractively(url, whitelistedDomains)
 			}
