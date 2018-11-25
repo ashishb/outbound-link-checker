@@ -1,8 +1,14 @@
 sudo: false
 language: go
+
 go:
-  - 1.x
+  - 1.11.x
   - master
+
+# Only clone the most recent commit.
+git:
+  depth: 1
+
 matrix:
   allow_failures:
     - go: master
@@ -12,5 +18,7 @@ install:
 script:
   - go get -t -v ./...
   - diff -u <(echo -n) <(gofmt -d -s .)
+  - go build outbound-link-checker.go
   - go tool vet .
-  - go test -v -race ./...
+  # We don't have tests yet
+#  - go test -v -race ./...
