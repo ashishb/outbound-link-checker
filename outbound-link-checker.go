@@ -360,7 +360,7 @@ func printResults(
 	for url, sourceUrls := range link {
 		if len(sourceUrls) >= 1 {
 			count++
-			fmt.Printf("URL %d: \"%s\"\ninbound pages: %s\n\n", count, url, sourceUrls[0])
+			fmt.Printf("URL %d/%d: \"%s\"\ninbound pages: %s\n\n", count, len(link), url, sourceUrls[0])
 			if *interactive {
 				handleInteractively(url, whitelistedDomains)
 			}
