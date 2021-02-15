@@ -1,4 +1,4 @@
-## Introduction [![Build Status](https://travis-ci.org/ashishb/outbound-link-checker.svg?branch=master)](https://travis-ci.org/ashishb/outbound-link-checker) [![Go Report Card](https://goreportcard.com/badge/github.com/ashishb/outbound-link-checker)](https://goreportcard.com/report/github.com/ashishb/outbound-link-checker)
+## Introduction <a href="https://github.com/ashishb/outbound-link-checker/actions"> ![Build](https://github.com/ashishb/outbound-link-checker/workflows/Go/badge.svg)</a> [![Go Report Card](https://goreportcard.com/badge/github.com/ashishb/outbound-link-checker)](https://goreportcard.com/report/github.com/ashishb/outbound-link-checker)
 
 This simple tool allows you to list all outbound links from your domain to catch suspicious and spammy links. You can whitelist domains interactively to mark them as safe and ignore all the outbound links to them.
 
