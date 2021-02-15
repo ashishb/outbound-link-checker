@@ -1,0 +1,34 @@
+name: Go
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.15
+
+# Not needed
+#     - name: Fetch
+#       run: go get -t -v ./...
+      
+    - name: Format
+      run: diff -u <(echo -n) <(gofmt -d -s .)
+    
+    - name: Build
+      run: go build outbound-link-checker.go
+      
+      # We don't have tests yet
+      # go test -v ./...  
+    - name: Vet
+      run: go vet .
