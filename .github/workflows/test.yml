@@ -31,4 +31,4 @@ jobs:
       # We don't have tests yet
       # go test -v ./...  
     - name: Vet
-      run: go tool vet .
+      run: go vet .
