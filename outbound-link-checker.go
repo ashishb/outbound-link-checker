@@ -49,6 +49,10 @@ var domain = flag.String("domain", "",
 	"The domain of the website, everything not on this domain will be considered outbound,"+
 		" don't prefix www in the front, for example, ashishb.net")
 
+var _httpClient = &http.Client{
+	Timeout: 60 * time.Second,
+}
+
 func main() {
 	handleFlags()
 	logger.ConfigureLogging(true)
@@ -208,10 +212,24 @@ func crawl(
 		Msg("Found urls")
 
 	for _, url2 := range urls {
+		if url2.Path == "" && url2.Host == "" {
+			log.Debug().
+				Str("url", url2.String()).
+				Str("source", url1.String()).
+				Msg("Host and Path is empty, skipping")
+			continue
+		}
+		url2.Fragment = ""
 		log.Info().
 			Str("url", url2.String()).
 			Msg("Visiting url")
-		url2 = normalizeUrl(url2)
+		if url2.String() == "" {
+			log.Fatal().
+				Str("url", url2.String()).
+				Str("source", url1.String()).
+				Msg("Empty url, skipping")
+			continue
+		}
 		if url2.Host == "" {
 			log.Debug().
 				Str("url", url2.String()).
@@ -263,40 +281,33 @@ func waitForCrawlCountAvailability() {
 		if value < *maxConcurrentCrawls {
 			return
 		}
+		time.Sleep(time.Second)
 	}
 }
 func incrementRunningCrawlCount() {
 	crawlCountLock.Lock()
+	defer crawlCountLock.Unlock()
 	runningCrawlCount++
-	crawlCountLock.Unlock()
 }
 
 func decrementRunningCrawlCount() {
 	crawlCountLock.Lock()
+	defer crawlCountLock.Unlock()
 	runningCrawlCount--
-	crawlCountLock.Unlock()
 }
 
 func recordLink(url1 url.URL, url2 url.URL, outboundLinkMap map[url.URL][]url.URL) {
 	lock.Lock()
 	defer lock.Unlock()
-	url1 = normalizeUrl(url1)
 	if outboundLinkMap[url1] == nil {
 		outboundLinkMap[url1] = make([]url.URL, 0)
 	}
 	outboundLinkMap[url1] = append(outboundLinkMap[url1], url2)
 }
 
-func normalizeUrl(url2 url.URL) url.URL {
-	// Remove bookmark fragments.
-	url2.Fragment = ""
-	return url2
-}
-
 func recordNewVisit(url url.URL, visitedMap map[url.URL]bool) bool {
 	lock.Lock()
 	defer lock.Unlock()
-	url = normalizeUrl(url)
 	if visitedMap[url] {
 		return false
 	} else {
@@ -322,7 +333,7 @@ func getBody(url url.URL) ([]byte, error) {
 	for retryCount < *maxBodyFetchRetryCount {
 		retryCount++
 		time.Sleep(time.Duration((retryCount - 1) * 1000 * 1000 * 1000))
-		response, err1 := http.Get(url.String())
+		response, err1 := _httpClient.Get(url.String())
 		if err1 != nil {
 			log.Warn().
 				Int("retryCount", retryCount).
@@ -352,7 +363,7 @@ func checkIfAlive(externalUrl url.URL, sourceUrl url.URL) {
 	waitForCrawlCountAvailability()
 	incrementRunningCrawlCount()
 	defer decrementRunningCrawlCount()
-	response, err := http.Get(externalUrl.String())
+	response, err := _httpClient.Get(externalUrl.String())
 	if err != nil {
 		log.Err(err).
 			Str("url", externalUrl.String()).
