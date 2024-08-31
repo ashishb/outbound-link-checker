@@ -1,4 +1,11 @@
-# Introduction ![Build](https://github.com/ashishb/outbound-link-checker/workflows/Go/badge.svg)</a> [![Go Report Card](https://goreportcard.com/badge/github.com/ashishb/outbound-link-checker)](https://goreportcard.com/report/github.com/ashishb/outbound-link-checker)
+# Introduction 
+
+[![Lint and test Go](https://github.com/ashishb/outbound-link-checker/actions/workflows/test.yml/badge.svg)](https://github.com/ashishb/outbound-link-checker/actions/workflows/test.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ashishb/outbound-link-checker)](https://goreportcard.com/report/github.com/ashishb/outbound-link-checker)
+
+[![Lint Markdown](https://github.com/ashishb/outbound-link-checker/actions/workflows/lint-markdown.yaml/badge.svg)](https://github.com/ashishb/outbound-link-checker/actions/workflows/lint-markdown.yaml)
+[![Lint YAML](https://github.com/ashishb/outbound-link-checker/actions/workflows/lint-yaml.yaml/badge.svg)](https://github.com/ashishb/outbound-link-checker/actions/workflows/lint-yaml.yaml)
+
 
 This simple tool allows you to list all outbound links from your domain to catch suspicious and spammy links. You can whitelist domains interactively to mark them as safe and ignore all the outbound links to them.
 
