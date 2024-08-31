@@ -17,7 +17,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: 1.15
+        go-version: "1.23"
 
 # Not needed
 #     - name: Fetch
@@ -27,9 +27,9 @@ jobs:
       run: diff -u <(echo -n) <(gofmt -d -s .)
     
     - name: Build
-      run: go build outbound-link-checker.go
+      run: make build
       
       # We don't have tests yet
       # go test -v ./...  
     - name: Vet
-      run: go vet .
+      run: make lint
