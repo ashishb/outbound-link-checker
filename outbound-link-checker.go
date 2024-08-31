@@ -56,9 +56,14 @@ func main() {
 	whitelistedDomains := initWhitelistedDomains()
 	knownDeadOrBlockedExternalUrls := initKnownDeadOrBlockedExternalUrls()
 	// Maps url1 -> url2 if url1 has a link to url2.
-	outboundLinkMap := make(map[string][]string, 0)
-	visitedMap := make(map[string]bool, 0)
-	crawl(*startingUrl, *domain, outboundLinkMap, visitedMap, *crawlPageLimit, knownDeadOrBlockedExternalUrls)
+	outboundLinkMap := make(map[url.URL][]url.URL, 0)
+	visitedMap := make(map[url.URL]bool)
+	startUrlParsed, err := url.Parse(*startingUrl)
+	if err != nil {
+		panic("Invalid starting url")
+	}
+
+	crawl(*startUrlParsed, *domain, outboundLinkMap, visitedMap, *crawlPageLimit, knownDeadOrBlockedExternalUrls)
 	printResults(outboundLinkMap, *domain, whitelistedDomains)
 }
 
@@ -112,12 +117,12 @@ func initWhitelistedDomains() map[string]bool {
 	return whitelistedDomains
 }
 
-func initKnownDeadOrBlockedExternalUrls() map[string]bool {
+func initKnownDeadOrBlockedExternalUrls() map[url.URL]bool {
 	dat, err := os.ReadFile(*knownDeadOrBlockedExternalUrlsFileName)
 	if err != nil {
 		panic(fmt.Sprintf("File does not exist: %s, create an empty file.\n", *knownDeadOrBlockedExternalUrlsFileName))
 	}
-	urls := make(map[string]bool, 0)
+	urls := make(map[url.URL]bool, 0)
 	urlCount := 0
 	for _, line := range strings.Split(string(dat), "\n") {
 		line = strings.Trim(line, " ")
@@ -130,7 +135,15 @@ func initKnownDeadOrBlockedExternalUrls() map[string]bool {
 			continue
 		}
 		urlCount++
-		urls[line] = true
+		url1, err := url.Parse(line)
+		if err != nil {
+			log.Error().
+				Str("url", line).
+				Err(err).
+				Msg("Error parsing url")
+			continue
+		}
+		urls[*url1] = true
 	}
 	return urls
 }
@@ -147,16 +160,16 @@ var crawlCountLock = sync.Mutex{}
 var runningCrawlCount = 0
 
 func crawl(
-	url string,
+	url1 url.URL,
 	domain string,
-	outboundLinkMap map[string][]string,
-	visitedMap map[string]bool,
+	outboundLinkMap map[url.URL][]url.URL,
+	visitedMap map[url.URL]bool,
 	crawlPageLimit int,
-	knownDeadOrWhitelistedExternalUrls map[string]bool) {
+	knownDeadOrWhitelistedExternalUrls map[url.URL]bool) {
 
-	if !recordNewVisit(url, visitedMap) {
+	if !recordNewVisit(url1, visitedMap) {
 		log.Debug().
-			Str("url", url).
+			Str("url", url1.String()).
 			Msg("Skipping already visited url")
 		return
 	}
@@ -174,14 +187,14 @@ func crawl(
 	log.Info().
 		Int("count", countValue).
 		Int("limit", crawlPageLimit).
-		Str("url", url).
+		Str("url", url1.String()).
 		Msg("Crawling")
 
 	// Fetch the body
-	body, err := getBody(url)
+	body, err := getBody(url1)
 	if err != nil {
 		log.Error().
-			Str("url", url).
+			Str("url", url1.String()).
 			Err(err).
 			Msg("Error while fetching body")
 		return
@@ -190,31 +203,38 @@ func crawl(
 	// Extract the urls
 	urls := getUrls(string(body))
 	log.Debug().
-		Str("url", url).
+		Str("url", url1.String()).
 		Int("count", len(urls)).
 		Msg("Found urls")
 
 	for _, url2 := range urls {
 		log.Info().
-			Str("url", url2).
+			Str("url", url2.String()).
 			Msg("Visiting url")
 		url2 = normalizeUrl(url2)
-		recordLink(url, url2, outboundLinkMap)
-		inDomainUrl, err := belongsToDomain(url2, domain)
-		if err != nil {
-			log.Error().
-				Str("url", url2).
-				Str("source", url).
-				Err(err).
-				Msg("Error while checking if url belongs to domain")
-			continue
+		if url2.Host == "" {
+			log.Debug().
+				Str("url", url2.String()).
+				Str("source", url1.String()).
+				Msg("Host is empty, setting it to source host")
+			url2.Host = url1.Host
 		}
+		if url2.Scheme == "" {
+			log.Debug().
+				Str("url", url2.String()).
+				Str("source", url1.String()).
+				Msg("Scheme is empty, setting it to source scheme")
+			url2.Scheme = url1.Scheme
+		}
+
+		recordLink(url1, url2, outboundLinkMap)
+		inDomainUrl := belongsToDomain(url2, domain)
 		if inDomainUrl {
 			go crawl(url2, domain, outboundLinkMap, visitedMap, crawlPageLimit, knownDeadOrWhitelistedExternalUrls)
 		} else {
-			if *showDeadLinks && len(url2) > 0 && !knownDeadOrWhitelistedExternalUrls[url2] &&
+			if *showDeadLinks && !knownDeadOrWhitelistedExternalUrls[url2] &&
 				recordNewVisit(url2, visitedMap) {
-				go checkIfAlive(url2, url)
+				go checkIfAlive(url2, url1)
 			}
 		}
 	}
@@ -257,26 +277,23 @@ func decrementRunningCrawlCount() {
 	crawlCountLock.Unlock()
 }
 
-func recordLink(url string, url2 string, outboundLinkMap map[string][]string) {
+func recordLink(url1 url.URL, url2 url.URL, outboundLinkMap map[url.URL][]url.URL) {
 	lock.Lock()
 	defer lock.Unlock()
-	url = normalizeUrl(url)
-	if outboundLinkMap[url] == nil {
-		outboundLinkMap[url] = make([]string, 0)
+	url1 = normalizeUrl(url1)
+	if outboundLinkMap[url1] == nil {
+		outboundLinkMap[url1] = make([]url.URL, 0)
 	}
-	outboundLinkMap[url] = append(outboundLinkMap[url], url2)
+	outboundLinkMap[url1] = append(outboundLinkMap[url1], url2)
 }
 
-func normalizeUrl(url string) string {
+func normalizeUrl(url2 url.URL) url.URL {
 	// Remove bookmark fragments.
-	if strings.Contains(url, "#") {
-		url = strings.Split(url, "#")[0]
-	}
-
-	return url
+	url2.Fragment = ""
+	return url2
 }
 
-func recordNewVisit(url string, visitedMap map[string]bool) bool {
+func recordNewVisit(url url.URL, visitedMap map[url.URL]bool) bool {
 	lock.Lock()
 	defer lock.Unlock()
 	url = normalizeUrl(url)
@@ -288,22 +305,14 @@ func recordNewVisit(url string, visitedMap map[string]bool) bool {
 	}
 }
 
-func belongsToDomain(url2 string, domain string) (bool, error) {
-	parsedUrl, err := url.Parse(url2)
-	if err != nil {
-		return false, err
-	}
-	hostname := parsedUrl.Host
-	if strings.Compare(hostname, domain) == 0 {
-		return true, nil
-	}
-	if strings.Compare(hostname, "www."+domain) == 0 {
-		return true, nil
-	}
-	return false, nil
+func belongsToDomain(url2 url.URL, domain string) bool {
+	hostname := url2.Host
+	return hostname == "" ||
+		strings.Compare(hostname, domain) == 0 ||
+		strings.Compare(hostname, "www."+domain) == 0
 }
 
-func getBody(url string) ([]byte, error) {
+func getBody(url url.URL) ([]byte, error) {
 	waitForCrawlCountAvailability()
 	incrementRunningCrawlCount()
 	defer decrementRunningCrawlCount()
@@ -313,11 +322,11 @@ func getBody(url string) ([]byte, error) {
 	for retryCount < *maxBodyFetchRetryCount {
 		retryCount++
 		time.Sleep(time.Duration((retryCount - 1) * 1000 * 1000 * 1000))
-		response, err1 := http.Get(url)
+		response, err1 := http.Get(url.String())
 		if err1 != nil {
 			log.Warn().
 				Int("retryCount", retryCount).
-				Str("url", url).
+				Str("url", url.String()).
 				Err(err1).
 				Msg("Failed to fetch")
 			err = err1
@@ -328,7 +337,7 @@ func getBody(url string) ([]byte, error) {
 		if err2 != nil {
 			log.Warn().
 				Int("retryCount", retryCount).
-				Str("url", url).
+				Str("url", url.String()).
 				Err(err2).
 				Msg("Failed to read body")
 			err = err2
@@ -339,32 +348,35 @@ func getBody(url string) ([]byte, error) {
 	return nil, err
 }
 
-func checkIfAlive(externalUrl string, sourceUrl string) {
+func checkIfAlive(externalUrl url.URL, sourceUrl url.URL) {
 	waitForCrawlCountAvailability()
 	incrementRunningCrawlCount()
 	defer decrementRunningCrawlCount()
-	response, err := http.Get(externalUrl)
-
+	response, err := http.Get(externalUrl.String())
 	if err != nil {
-		fmt.Fprintf(os.Stderr,
-			"Error while fetching \"%s\" from \"%s\": %s\n",
-			externalUrl, sourceUrl, err)
+		log.Err(err).
+			Str("url", externalUrl.String()).
+			Str("source", sourceUrl.String()).
+			Msg("Error while fetching")
 		return
 	}
+	defer response.Body.Close()
 
 	if response.StatusCode != 200 {
-		fmt.Fprintf(os.Stderr,
-			"Error while fetching \"%s\" from \"%s\" : %d\n",
-			externalUrl, sourceUrl, response.StatusCode)
+		log.Err(err).
+			Str("url", externalUrl.String()).
+			Str("source", sourceUrl.String()).
+			Int("statusCode", response.StatusCode).
+			Msg("Error while fetching")
 	}
 }
 
 // Hacky way to get links from HTML page
 var linkRegEx = regexp.MustCompile(`<a.*?href=(.*?)[\s>]`)
 
-func getUrls(htmlBody string) []string {
+func getUrls(htmlBody string) []url.URL {
 	links := linkRegEx.FindAllStringSubmatch(htmlBody, -1)
-	result := make([]string, len(links))
+	result := make([]url.URL, len(links))
 	for i := range links {
 		link := links[i][1]
 		link = strings.Trim(link, "\"")
@@ -374,24 +386,28 @@ func getUrls(htmlBody string) []string {
 		if strings.HasPrefix(link, "#") {
 			continue
 		}
-		result = append(result, link)
+		linkParsed, err := url.Parse(link)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("link", link).
+				Msg("Error parsing link")
+			continue
+		}
+		result = append(result, *linkParsed)
 	}
 	return result
 }
 
-func printResults(
-	outboundLinkMap map[string][]string,
-	domain string,
-	whitelistedDomains map[string]bool) {
-	link := make(map[string][]string, 0)
+func printResults(outboundLinkMap map[url.URL][]url.URL, domain string, whitelistedDomains map[string]bool) {
+	link := make(map[url.URL][]url.URL, 0)
 	for url1, urls := range outboundLinkMap {
 		for _, url2 := range urls {
-			result, _ := belongsToDomain(url2, domain)
+			result := belongsToDomain(url2, domain)
 			if result {
 				continue
 			}
-			result2, _ := belongsToWhitelistedDomains(url2, whitelistedDomains)
-			if result2 {
+			if whitelistedDomains[url2.Host] {
 				continue
 			}
 			link[url2] = append(link[url2], url1)
@@ -402,41 +418,24 @@ func printResults(
 		Int("count", len(link)).
 		Msg("Results")
 	count := 0
-	for url, sourceUrls := range link {
+	for url1, sourceUrls := range link {
 		if len(sourceUrls) >= 1 {
 			count++
 			log.Info().
 				Int("count", count).
 				Int("total", len(link)).
-				Str("url", url).
-				Str("sourceUrls", sourceUrls[0]).
+				Str("url", url1.String()).
+				Str("sourceUrls", sourceUrls[0].String()).
 				Msg("URL")
 			if *interactive {
-				handleInteractively(url, whitelistedDomains)
+				handleInteractively(url1, whitelistedDomains)
 			}
 		}
 	}
 }
 
-func belongsToWhitelistedDomains(url2 string, whitelistedDomains map[string]bool) (bool, error) {
-	parsedUrl, err := url.Parse(url2)
-	if err != nil {
-		return false, err
-	}
-	return whitelistedDomains[parsedUrl.Host], nil
-}
-
 // Whitelists domains interactively
-func handleInteractively(url2 string, whitelistedDomains map[string]bool) {
-	url2 = strings.Trim(url2, " ")
-	parsedUrl, err := url.Parse(url2)
-	if err != nil {
-		log.Error().
-			Str("url", url2).
-			Msg("Error parsing url")
-		return
-	}
-
+func handleInteractively(parsedUrl url.URL, whitelistedDomains map[string]bool) {
 	domain := parsedUrl.Host
 	domain = strings.TrimPrefix(domain, "www.")
 	if len(domain) == 0 {
