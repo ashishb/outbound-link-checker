@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"github.com/ashishb/outbound-link-checker/internal/logger"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	"net/url"
@@ -49,6 +51,7 @@ var domain = flag.String("domain", "",
 
 func main() {
 	handleFlags()
+	logger.ConfigureLogging(true)
 
 	whitelistedDomains := initWhitelistedDomains()
 	knownDeadOrBlockedExternalUrls := initKnownDeadOrBlockedExternalUrls()
@@ -78,7 +81,9 @@ func handleFlags() {
 func initWhitelistedDomains() map[string]bool {
 	dat, err := os.ReadFile(*domainWhitelistFile)
 	if err != nil {
-		fmt.Printf("Domain whitelist file does not exist, it will be created later: %s\n", *domainWhitelistFile)
+		log.Warn().
+			Str("file", *domainWhitelistFile).
+			Msg("Domain whitelist file does not exist, it will be created later")
 	}
 	whitelisted := make([]string, 0)
 	whitelistCount := 0
@@ -95,7 +100,10 @@ func initWhitelistedDomains() map[string]bool {
 		whitelistCount++
 		whitelisted = append(whitelisted, line)
 	}
-	fmt.Printf("Read %d domains in the domain whitelist\n", whitelistCount)
+	log.Info().
+		Str("file", *domainWhitelistFile).
+		Int("count", whitelistCount).
+		Msg("Domain whitelist file loaded")
 
 	whitelistedDomains := make(map[string]bool, 0)
 	for _, domain := range whitelisted {
@@ -147,7 +155,9 @@ func crawl(
 	knownDeadOrWhitelistedExternalUrls map[string]bool) {
 
 	if !recordNewVisit(url, visitedMap) {
-		// fmt.Printf("Skipping already visited url: %s\n", url)
+		log.Debug().
+			Str("url", url).
+			Msg("Skipping already visited url")
 		return
 	}
 
@@ -161,29 +171,42 @@ func crawl(
 	}
 	lock.Unlock()
 
-	if crawlPageLimit >= 0 {
-		fmt.Printf("Crawling %d (limit: %d) URL: \"%s\"\n", countValue, crawlPageLimit, url)
-	} else {
-		fmt.Printf("Crawling %d URL: \"%s\"\n", countValue, url)
-	}
+	log.Info().
+		Int("count", countValue).
+		Int("limit", crawlPageLimit).
+		Str("url", url).
+		Msg("Crawling")
 
 	// Fetch the body
 	body, err := getBody(url)
 	if err != nil {
-		fmt.Printf("Error %s while crawling url %s\n", err, url)
+		log.Error().
+			Str("url", url).
+			Err(err).
+			Msg("Error while fetching body")
 		return
 	}
 
 	// Extract the urls
-	urls := getUrls(body)
-	fmt.Printf("Found %d urls on \"%s\"\n", len(urls), url)
+	urls := getUrls(string(body))
+	log.Debug().
+		Str("url", url).
+		Int("count", len(urls)).
+		Msg("Found urls")
 
 	for _, url2 := range urls {
+		log.Info().
+			Str("url", url2).
+			Msg("Visiting url")
 		url2 = normalizeUrl(url2)
 		recordLink(url, url2, outboundLinkMap)
 		inDomainUrl, err := belongsToDomain(url2, domain)
 		if err != nil {
-			fmt.Printf("Error while parsing \"%s\" which came from the source \"%s\": \"%s\"\n", url2, url, err)
+			log.Error().
+				Str("url", url2).
+				Str("source", url).
+				Err(err).
+				Msg("Error while checking if url belongs to domain")
 			continue
 		}
 		if inDomainUrl {
@@ -202,7 +225,9 @@ func crawl(
 		value := runningCrawlCount
 		crawlCountLock.Unlock()
 		if value > 0 {
-			//fmt.Printf("Running count value is %d\n", value)
+			log.Debug().
+				Int("value", value).
+				Msg("Waiting for all crawls to finish")
 			time.Sleep(time.Second)
 		} else {
 			return
@@ -278,7 +303,7 @@ func belongsToDomain(url2 string, domain string) (bool, error) {
 	return false, nil
 }
 
-func getBody(url string) (string, error) {
+func getBody(url string) ([]byte, error) {
 	waitForCrawlCountAvailability()
 	incrementRunningCrawlCount()
 	defer decrementRunningCrawlCount()
@@ -290,19 +315,28 @@ func getBody(url string) (string, error) {
 		time.Sleep(time.Duration((retryCount - 1) * 1000 * 1000 * 1000))
 		response, err1 := http.Get(url)
 		if err1 != nil {
-			fmt.Printf("Failed to fetch on %d try: %s\n", retryCount, url)
+			log.Warn().
+				Int("retryCount", retryCount).
+				Str("url", url).
+				Err(err1).
+				Msg("Failed to fetch")
 			err = err1
 			continue
 		}
+		defer response.Body.Close()
 		bodyBytes, err2 := io.ReadAll(response.Body)
 		if err2 != nil {
-			fmt.Printf("Failed to fetch on %d try: %s\n", retryCount, url)
+			log.Warn().
+				Int("retryCount", retryCount).
+				Str("url", url).
+				Err(err2).
+				Msg("Failed to read body")
 			err = err2
 			continue
 		}
-		return string(bodyBytes), nil
+		return bodyBytes, nil
 	}
-	return "", err
+	return nil, err
 }
 
 func checkIfAlive(externalUrl string, sourceUrl string) {
@@ -326,13 +360,21 @@ func checkIfAlive(externalUrl string, sourceUrl string) {
 }
 
 // Hacky way to get links from HTML page
-var linkRegEx = regexp.MustCompile("<a.*?href=\"(.*?)\"")
+var linkRegEx = regexp.MustCompile(`<a.*?href=(.*?)[\s>]`)
 
 func getUrls(htmlBody string) []string {
 	links := linkRegEx.FindAllStringSubmatch(htmlBody, -1)
 	result := make([]string, len(links))
 	for i := range links {
-		result = append(result, links[i][1])
+		link := links[i][1]
+		link = strings.Trim(link, "\"")
+		link = strings.Trim(link, "'")
+
+		// Internal links
+		if strings.HasPrefix(link, "#") {
+			continue
+		}
+		result = append(result, link)
 	}
 	return result
 }
@@ -356,12 +398,19 @@ func printResults(
 		}
 	}
 
-	fmt.Printf("Results:\n")
+	log.Info().
+		Int("count", len(link)).
+		Msg("Results")
 	count := 0
 	for url, sourceUrls := range link {
 		if len(sourceUrls) >= 1 {
 			count++
-			fmt.Printf("URL %d/%d: \"%s\"\ninbound pages: %s\n\n", count, len(link), url, sourceUrls[0])
+			log.Info().
+				Int("count", count).
+				Int("total", len(link)).
+				Str("url", url).
+				Str("sourceUrls", sourceUrls[0]).
+				Msg("URL")
 			if *interactive {
 				handleInteractively(url, whitelistedDomains)
 			}
@@ -382,7 +431,9 @@ func handleInteractively(url2 string, whitelistedDomains map[string]bool) {
 	url2 = strings.Trim(url2, " ")
 	parsedUrl, err := url.Parse(url2)
 	if err != nil {
-		fmt.Printf("Error parsing \"%s\" to extract domain\n", url2)
+		log.Error().
+			Str("url", url2).
+			Msg("Error parsing url")
 		return
 	}
 
@@ -411,8 +462,12 @@ func handleInteractively(url2 string, whitelistedDomains map[string]bool) {
 		w := bufio.NewWriter(file)
 		fmt.Fprintln(w, domain)
 		w.Flush()
-		fmt.Printf("Domain %s whitelisted\n\n", domain)
+		log.Info().
+			Str("domain", domain).
+			Msg("Domain whitelisted")
 	} else {
-		fmt.Printf("Domain %s not whitelisted\n\n", domain)
+		log.Info().
+			Str("domain", domain).
+			Msg("Domain not whitelisted")
 	}
 }
