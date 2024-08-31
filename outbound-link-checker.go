@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -76,7 +76,7 @@ func handleFlags() {
 }
 
 func initWhitelistedDomains() map[string]bool {
-	dat, err := ioutil.ReadFile(*domainWhitelistFile)
+	dat, err := os.ReadFile(*domainWhitelistFile)
 	if err != nil {
 		fmt.Printf("Domain whitelist file does not exist, it will be created later: %s\n", *domainWhitelistFile)
 	}
@@ -105,7 +105,7 @@ func initWhitelistedDomains() map[string]bool {
 }
 
 func initKnownDeadOrBlockedExternalUrls() map[string]bool {
-	dat, err := ioutil.ReadFile(*knownDeadOrBlockedExternalUrlsFileName)
+	dat, err := os.ReadFile(*knownDeadOrBlockedExternalUrlsFileName)
 	if err != nil {
 		panic(fmt.Sprintf("File does not exist: %s, create an empty file.\n", *knownDeadOrBlockedExternalUrlsFileName))
 	}
@@ -176,6 +176,7 @@ func crawl(
 
 	// Extract the urls
 	urls := getUrls(body)
+	fmt.Printf("Found %d urls on \"%s\"\n", len(urls), url)
 
 	for _, url2 := range urls {
 		url2 = normalizeUrl(url2)
@@ -293,7 +294,7 @@ func getBody(url string) (string, error) {
 			err = err1
 			continue
 		}
-		bodyBytes, err2 := ioutil.ReadAll(response.Body)
+		bodyBytes, err2 := io.ReadAll(response.Body)
 		if err2 != nil {
 			fmt.Printf("Failed to fetch on %d try: %s\n", retryCount, url)
 			err = err2
@@ -325,7 +326,7 @@ func checkIfAlive(externalUrl string, sourceUrl string) {
 }
 
 // Hacky way to get links from HTML page
-var linkRegEx = regexp.MustCompile("<a href=['\"](.*?)['\"]")
+var linkRegEx = regexp.MustCompile("<a.*?href=\"(.*?)\"")
 
 func getUrls(htmlBody string) []string {
 	links := linkRegEx.FindAllStringSubmatch(htmlBody, -1)
@@ -386,10 +387,7 @@ func handleInteractively(url2 string, whitelistedDomains map[string]bool) {
 	}
 
 	domain := parsedUrl.Host
-	if strings.HasPrefix(domain, "www.") {
-		// Remove the "www." prefix
-		domain = domain[4:]
-	}
+	domain = strings.TrimPrefix(domain, "www.")
 	if len(domain) == 0 {
 		return
 	}
