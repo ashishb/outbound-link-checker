@@ -193,10 +193,10 @@ func crawl(
 	// Fetch the body
 	body, err := getBody(url1)
 	if err != nil {
-		log.Error().
+		log.Fatal().
 			Str("url", url1.String()).
 			Err(err).
-			Msg("Error while fetching body")
+			Msg("Internal dead link found")
 		return
 	}
 
