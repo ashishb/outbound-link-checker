@@ -4,21 +4,21 @@ This simple tool allows you to list all outbound links from your domain to catch
 
 ## Some history behind this tool
 
-My personal website was compromised, most likely due to password-reuse and the attacker carefully inserted a few spammy links for SEO to certain websites. I caught them on one-off basis and then realized that the best way to deal with these is to be able to list all the outbound links from my website and whitelist the domains one-by-one. Unfortunately, I did not find a single tool which can do this for me, so, I decided to make one. This tool preserves the domain whitelist file, so that, if I re-run the code a few months from now, then I have to only check the newly added links. I caught many more spammy links using this approach. Thinking that other website/blog owners are facing the same issue, I decided to put this tool out in public.
+My website was compromised, most likely due to password reuse and the attacker carefully inserted a few spammy links for SEO to certain websites. I caught them on a one-off basis and then realized that the best way to deal with these is to be able to list all the outbound links from my website and whitelist the domains one by one. Unfortunately, I did not find a single tool which can do this for me, so, I decided to make one. This tool preserves the domain whitelist file, so that, if I re-run the code a few months from now, then I have only to check the newly added links. I caught many more spammy links using this approach. Thinking that other website/blog owners face the same issue, I decided to put this tool out in public.
 
 ## Installation (optional)
 
-`go get github.com/ashishb/outbound-link-checker`
+`go install github.com/ashishb/outbound-link-checker@latest`
 
 ## Sample Usage
 
-`go run outbound-link-checker.go -domain google.com -starting-url https://google.com -num-url-crawl-limit 10`
+`outbound-link-checker -domain google.com -starting-url https://google.com -num-url-crawl-limit 10`
 
-or, if you installed and the binary is in your $GOPATH then
+or, if you installed it and the binary is in your $GOPATH then
 
 `outbound-link-checker -domain google.com -starting-url https://google.com -num-url-crawl-limit 10`
 
-Pass `-show-dead-links` parameter to crawl external urls and check if they are alive or dead. The dead links would be printed to stderr.
+Pass `-show-dead-links` parameter to crawl external URLs and check if they are alive or dead. The dead links would be printed to stderr.
 
 ## Parameters
 
